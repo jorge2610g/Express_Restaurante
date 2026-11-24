@@ -31,16 +31,29 @@ String _merchantMoney(Object? value, String currency) {
   return code + ' ' + amount.toStringAsFixed(2);
 }
 
+String _marketplacePaymentStatusLabel(String value) => switch (value.toLowerCase()) {
+  'qr_pending' => 'Esperando pago QR',
+  'paid' => 'Pagado',
+  'cancelled' => 'Cancelado',
+  'expired' => 'Vencido',
+  'awaiting_receipt' => 'Esperando comprobante',
+  'under_review' => 'En revisión',
+  'rejected' => 'Rechazado',
+  _ => value.replaceAll('_', ' '),
+};
+
 class MarketplaceMerchantPanelPage extends StatefulWidget {
   final RestaurantService service;
   final List<Map<String, dynamic>> access;
-  final VoidCallback? onSignOut;
+
+  /// Dentro del menú lateral del portal: sin barra superior ni cabecera propias.
+  final bool embedded;
 
   const MarketplaceMerchantPanelPage({
     super.key,
     required this.service,
     required this.access,
-    this.onSignOut,
+    this.embedded = false,
   });
 
   @override
@@ -101,6 +114,7 @@ class _MarketplaceMerchantPanelPageState
       case 'new':
         return const {
           'pending',
+          'awaiting_payment',
           'awaiting_merchant',
           'awaiting_transfer',
           'payment_review',
@@ -117,13 +131,16 @@ class _MarketplaceMerchantPanelPageState
           'delivering',
         }.contains(status);
       case 'done':
-        return const {'delivered', 'cancelled'}.contains(status);
+        return status == 'delivered';
+      case 'cancelled':
+        return status == 'cancelled';
       default:
         return true;
     }
   }
 
   String _statusLabel(String status) => switch (status) {
+    'awaiting_payment' => 'Esperando pago QR',
     'pending' || 'awaiting_merchant' => 'Nuevo',
     'awaiting_transfer' || 'payment_review' => 'Pago por revisar',
     'confirmed' => 'Confirmado',
@@ -139,6 +156,7 @@ class _MarketplaceMerchantPanelPageState
   };
 
   Color _statusColor(String status) => switch (status) {
+    'awaiting_payment' => const Color(0xFF7C3AED),
     'pending' || 'awaiting_merchant' => const Color(0xFFB45309),
     'awaiting_transfer' || 'payment_review' => const Color(0xFF7C3AED),
     'preparing' || 'confirmed' => const Color(0xFF2563EB),
@@ -151,6 +169,7 @@ class _MarketplaceMerchantPanelPageState
   String _paymentLabel(String value) => switch (value.toLowerCase()) {
     'cash' => 'Efectivo',
     'transfer' => 'Transferencia',
+    'global_qr' => 'QR Global · VeriPagos',
     'card' || 'online' => 'Pago en línea',
     '' => 'Pago pendiente',
     _ => value,
@@ -271,8 +290,9 @@ class _MarketplaceMerchantPanelPageState
     final id = row['id']?.toString() ?? '';
     final shownId = id.length > 8 ? id.substring(0, 8).toUpperCase() : id;
     final payment = _paymentLabel(row['payment_method']?.toString() ?? '');
-    final paymentStatus =
-        (row['payment_status']?.toString() ?? 'pending').replaceAll('_', ' ');
+    final paymentStatus = _marketplacePaymentStatusLabel(
+      row['payment_status']?.toString() ?? 'pending',
+    );
     return Card(
       margin: EdgeInsets.zero,
       color: Colors.white,
@@ -471,29 +491,25 @@ class _MarketplaceMerchantPanelPageState
     }
     return Scaffold(
       backgroundColor: _page,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: _ink,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Panel del restaurante',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Actualizar pedidos',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          if (widget.onSignOut != null)
-            IconButton(
-              tooltip: 'Cerrar sesión',
-              onPressed: widget.onSignOut,
-              icon: const Icon(Icons.logout_rounded),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              foregroundColor: _ink,
+              surfaceTintColor: Colors.white,
+              elevation: 0,
+              title: const Text(
+                'Panel del restaurante',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Actualizar pedidos',
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
             ),
-        ],
-      ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: future,
         builder: (context, snapshot) {
@@ -568,7 +584,7 @@ class _MarketplaceMerchantPanelPageState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
+                            if (!widget.embedded) Container(
                               width: double.infinity,
                               padding: EdgeInsets.all(wide ? 24 : 18),
                               decoration: BoxDecoration(
@@ -697,7 +713,7 @@ class _MarketplaceMerchantPanelPageState
                               ),
                             ),
                             const SizedBox(height: 16),
-                            Wrap(
+                            if (!widget.embedded) Wrap(
                               spacing: 10,
                               runSpacing: 10,
                               children: [
@@ -752,11 +768,15 @@ class _MarketplaceMerchantPanelPageState
                                   _filterChip('delivery', 'En camino', deliveryCount),
                                   _filterChip(
                                     'done',
-                                    'Finalizados',
-                                    rows.where((row) => const {
-                                      'delivered',
-                                      'cancelled',
-                                    }.contains(_status(row))).length,
+                                    'Completados',
+                                    rows.where((row) =>
+                                        _status(row) == 'delivered').length,
+                                  ),
+                                  _filterChip(
+                                    'cancelled',
+                                    'Cancelados',
+                                    rows.where((row) =>
+                                        _status(row) == 'cancelled').length,
                                   ),
                                 ],
                               ),
@@ -1003,8 +1023,8 @@ class _MarketplaceMerchantOrderPageState
             : <Map<String, dynamic>>[];
 
         final status = order['status']?.toString() ?? '';
-        final paymentStatus =
-            order['payment_status']?.toString() ?? '';
+        final paymentStatusKey = order['payment_status']?.toString() ?? '';
+        final paymentStatus = _marketplacePaymentStatusLabel(paymentStatusKey);
         final paymentMethod =
             order['payment_method']?.toString() ?? '';
         final currency =
@@ -1012,15 +1032,16 @@ class _MarketplaceMerchantOrderPageState
 
         final transferReview =
             paymentMethod == 'transfer' &&
-            paymentStatus == 'under_review';
+            paymentStatusKey == 'under_review';
 
         final awaitingMerchant =
             status == 'awaiting_merchant' && paymentMethod == 'transfer';
         final canSendBankDetails =
             paymentMethod == 'transfer' &&
             (status == 'awaiting_transfer' || status == 'payment_review');
-        final canConfirm =
-            status == 'pending' && paymentMethod == 'cash';
+        final canConfirm = status == 'pending' &&
+            (paymentMethod == 'cash' ||
+                (paymentMethod == 'global_qr' && paymentStatusKey == 'paid'));
         final canPrepare = status == 'confirmed';
         final canReady = status == 'preparing';
         final owesDriver =

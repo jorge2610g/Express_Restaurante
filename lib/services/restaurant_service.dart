@@ -81,6 +81,30 @@ class RestaurantService {
         'p_note': note,
       }));
 
+  String get userId => supabase.auth.currentUser!.id;
+
+  Future<List<Map<String, dynamic>>> supportMessages() async {
+    final rows = await supabase
+        .from('support_messages')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> sendSupportMessage(String body) async {
+    final text = body.trim();
+    if (text.isEmpty) return;
+    await supabase.from('support_messages').insert({
+      'user_id': userId,
+      'sender_id': userId,
+      'sender_role': 'user',
+      'body': text,
+      'read_by_user': true,
+      'read_by_admin': false,
+    });
+  }
+
   Map<String, dynamic> _map(dynamic value) => value is Map
       ? Map<String, dynamic>.from(value)
       : <String, dynamic>{};
