@@ -6,7 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/runtime_channel.dart';
 import 'core/supabase_client.dart';
 import 'services/restaurant_service.dart';
-import 'marketplace_merchant_page.dart';
+import 'design/express_tokens.dart';
+import 'restaurant_shell.dart';
 import 'restaurant_application_page.dart';
 
 /// Independent mobile app for Express restaurant operators.
@@ -49,20 +50,8 @@ class _RestaurantPortalState extends State<ExpressRestaurantPortal> {
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'Express Restaurante',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF195DCB)),
-      scaffoldBackgroundColor: const Color(0xFFF4F6FB),
-    ),
-    darkTheme: ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF195DCB),
-        brightness: Brightness.dark,
-      ),
-    ),
-    themeMode: ThemeMode.system,
+    theme: ExpressTheme.light(),
+    themeMode: ThemeMode.light,
     home: _loggedIn
         ? const _RestaurantDashboardGate()
         : const _RestaurantLogin(),
@@ -429,10 +418,10 @@ class _RestaurantDashboardGateState extends State<_RestaurantDashboardGate> {
       final access =
           (snapshot.data!['access'] as List<Map<String, dynamic>>?) ?? const [];
       if (access.isNotEmpty) {
-        return MarketplaceMerchantPanelPage(
+        return RestaurantPortalShell(
           service: service,
           access: access,
-          onSignOut: _logout,
+          onLogout: _logout,
         );
       }
       final application =
